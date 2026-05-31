@@ -12,6 +12,8 @@
  * [ ] Malloc checks for dyn_arr ops
  * [ ] LONG
  * [ ] multiple flags in 1 args
+ * [ ] Generell error handling ..
+ * [ ] line splitting for multiple input paths, currently only for -R
 */
 
 
@@ -79,7 +81,6 @@ t_args_type args_type(const char *arg) {
 	return PATH;
 }
 
-//todo: spacing
 //todo: long format
 void print_info(const char *path, t_modes modes) {
 	ft_printf("%s  ", path);
@@ -106,6 +107,18 @@ char *get_sub_dir_path(const char *path, const char *sub_name) {
 	return sub_dir;
 }
 
+bool cmp_paths(const void *a, const void *b) {
+	char *a_ent = (char *)a;
+	char *b_ent = (char *)b;
+	return ft_strcmp(a_ent, b_ent) > 0;
+}
+
+bool cmp_paths_reverse(const void *a, const void *b) {
+	char *a_ent = (char *)a;
+	char *b_ent = (char *)b;
+	return ft_strcmp(a_ent, b_ent) < 0;
+}
+
 bool cmp_dir_entry(const void *a, const void *b) {
 	struct dirent *a_ent = (struct dirent *)a;
 	struct dirent *b_ent = (struct dirent *)b;
@@ -121,25 +134,27 @@ bool cmp_dir_entry_reverse(const void *a, const void *b) {
 void handle_dir(const char *path, t_modes modes, char ***paths, int *path_count) {
 	DIR *dir = opendir(path);
 	if (dir == NULL) {
-		switch (errno) {
-			// todo
-			case (EACCES): break ;// Permission denied/.
-			case (EBADF): break ;//  fd is not a valid file descriptor opened for reading.
-			case (EMFILE): break ;// The per-process limit on the number of open file descriptors has been reached.
-			case (ENFILE): break ;// The system-wide limit on the total number of open files has been reached.
-			case (ENOENT): break ;// Directory does not exist, or name is an empty string.
-			case (ENOMEM): break ;// Insufficient memory to complete the operation.
-			case (ENOTDIR): assert(0);//name is not a directory.
-		}
+		ft_fprintf(2, "ft_ls: cannot open directory '%s': %s\n", path, strerror(errno));
+		return ;
 	}
 	if (modes.recursive) {
 		ft_printf("\n%s:\n", path);
 	}
-	//todo: don't store an arr of the file names, store the dirent struct
 	struct dirent *sub_files = (struct dirent *)dyn_arr_init(sizeof(struct dirent), 24);
 	int sub_file_count = 0;
 	for (struct dirent *content = readdir(dir); content != NULL; content = readdir(dir)) {
-		dyn_arr_add_save((void**)(&sub_files), (void*)(content), sub_file_count++);
+
+		/*Even though struct dirent is of a certain sice, it is not guaranteed
+		 * that the full struct is allocated. For short file names the allocation
+		 * might be smaller, which leads to segaults in dyn_arr_add_save. */
+		struct dirent local = {0};
+		ft_memcpy(&local, content, content->d_reclen);
+
+		if (dyn_arr_add_save((void**)(&sub_files), (void*)(&local), sub_file_count++)) {
+			ft_fprintf(2, "Malloc Error\n");
+			closedir(dir);
+			return ;
+		}
 	}
 	closedir(dir);
 
@@ -158,6 +173,7 @@ void handle_dir(const char *path, t_modes modes, char ***paths, int *path_count)
 			&& ft_strcmp(content->d_name, ".") && ft_strcmp(content->d_name, "..")) {
 			char *rec_dir = get_sub_dir_path(path, content->d_name);
 			if (!rec_dir) {
+				dyn_arr_free((void**)(&sub_files));
 				return ;
 			}
 			dyn_arr_add_save((void**)paths, (void*)(&rec_dir), (*path_count)++);
@@ -222,7 +238,7 @@ int main(int ac, char **av) {
 		if (arg_type == PATH) {
 			dyn_arr_add_save((void**)(&paths), (void*)(av + i), path_count++);
 		}
-		ft_printf("args type %s\n", args_type_to_str(arg_type));
+		//ft_printf("args type %s\n", args_type_to_str(arg_type));
 	}
 
 	//ft_printf("path count: %d\n", path_count);
@@ -232,11 +248,19 @@ int main(int ac, char **av) {
 	}
 	const int non_recurisve_path_count = path_count;
 	for (int i = 0 ; i < path_count; i++) {
+		// todo: sorting dosn't work and super slow
+		if (!modes.reverse) {
+			ft_sort(paths + i, sizeof(char *), path_count - i, cmp_paths);
+		} else {
+			ft_sort(paths + i, sizeof(char *), path_count - i, cmp_paths_reverse);
+		}
+
 		handle_path(paths[i], modes, &paths, &path_count);
 	}
-	for (int i = non_recurisve_path_count; i < path_count; i++) {
-		free(paths[i]);
-	}
+	//todo: needs diffrent cleanup since now the array is reordered
+	//for (int i = non_recurisve_path_count; i < path_count; i++) {
+	//	free(paths[i]);
+	//}
 
 	dyn_arr_free((void **)(&paths));
 	if (!modes.recursive) {
