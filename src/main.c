@@ -7,6 +7,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/*
+ * todo:
+ * [ ] Malloc checks for dyn_arr ops
+ * [ ] LONG
+ * [ ] multiple flags in 1 args
+*/
+
 
 //-l     use a long listing format
 //       -R, --recursive //list subdirectories recursively
@@ -50,7 +57,11 @@ void set_mode(t_modes *modes, t_args_type type) {
 	}
 }
 
+//todo: needs rework
 t_args_type args_type(const char *arg) {
+	if (arg[0] != '-') {
+		return PATH;
+	}
 	const char *flags[][2] = {
 		{"-l", "-l"},
 		{"-R", "--recursive"},
@@ -68,8 +79,10 @@ t_args_type args_type(const char *arg) {
 	return PATH;
 }
 
+//todo: spacing
+//todo: long format
 void print_info(const char *path, t_modes modes) {
-	printf("%s ", path);
+	ft_printf("%s  ", path);
 }
 
 char *get_sub_dir_path(const char *path, const char *sub_name) {
@@ -93,11 +106,23 @@ char *get_sub_dir_path(const char *path, const char *sub_name) {
 	return sub_dir;
 }
 
-//todo
+bool cmp_dir_entry(const void *a, const void *b) {
+	struct dirent *a_ent = (struct dirent *)a;
+	struct dirent *b_ent = (struct dirent *)b;
+	return ft_strcmp(a_ent->d_name, b_ent->d_name) > 0;
+}
+
+bool cmp_dir_entry_reverse(const void *a, const void *b) {
+	struct dirent *a_ent = (struct dirent *)a;
+	struct dirent *b_ent = (struct dirent *)b;
+	return ft_strcmp(a_ent->d_name, b_ent->d_name) < 0;
+}
+
 void handle_dir(const char *path, t_modes modes, char ***paths, int *path_count) {
 	DIR *dir = opendir(path);
 	if (dir == NULL) {
 		switch (errno) {
+			// todo
 			case (EACCES): break ;// Permission denied/.
 			case (EBADF): break ;//  fd is not a valid file descriptor opened for reading.
 			case (EMFILE): break ;// The per-process limit on the number of open file descriptors has been reached.
@@ -108,10 +133,23 @@ void handle_dir(const char *path, t_modes modes, char ***paths, int *path_count)
 		}
 	}
 	if (modes.recursive) {
-		ft_printf("%s:\n", path);
+		ft_printf("\n%s:\n", path);
 	}
-	//todo: first save all the paths, sort them case sensitive and then work on them
+	//todo: don't store an arr of the file names, store the dirent struct
+	struct dirent *sub_files = (struct dirent *)dyn_arr_init(sizeof(struct dirent), 24);
+	int sub_file_count = 0;
 	for (struct dirent *content = readdir(dir); content != NULL; content = readdir(dir)) {
+		dyn_arr_add_save((void**)(&sub_files), (void*)(content), sub_file_count++);
+	}
+	closedir(dir);
+
+	if (!modes.reverse) {
+		ft_sort(sub_files, sizeof(struct dirent), sub_file_count, cmp_dir_entry);
+	} else {
+		ft_sort(sub_files, sizeof(struct dirent), sub_file_count, cmp_dir_entry_reverse);
+	}
+	for (int i = 0; i < sub_file_count; i++) {
+		struct dirent *content = sub_files + i;
 		if (content->d_name[0] == '.' && !modes.all) {
 			continue ;
 		}
@@ -125,10 +163,11 @@ void handle_dir(const char *path, t_modes modes, char ***paths, int *path_count)
 			dyn_arr_add_save((void**)paths, (void*)(&rec_dir), (*path_count)++);
 		}
 	}
-	closedir(dir);
+	dyn_arr_free((void**)(&sub_files));
 	if (modes.recursive) {
 		ft_printf("\n");
 	}
+
 }
 
 void handle_path(const char *path, t_modes modes, char ***paths, int *path_count) {
@@ -200,7 +239,7 @@ int main(int ac, char **av) {
 	}
 
 	dyn_arr_free((void **)(&paths));
-	if (modes.recursive) {
+	if (!modes.recursive) {
 		ft_printf("\n");
 	}
 	return 0;
