@@ -14,7 +14,7 @@
  * [ ] LONG
  * [ ] multiple flags in 1 args
  * [ ] Generell error handling ..
- * [ ] TIME sorting
+ * [~] TIME sorting
  * [x] line splitting for multiple input paths, currently only for -R
 */
 
@@ -120,7 +120,7 @@ void print_info(const char *name, struct stat stats, t_modes modes, const char *
 		ft_printf("%s  ", name);
 		return ;
 	}
-	char *file_path = get_sub_dir_path(path, name);
+	char *file_path = get_sub_dir_path(path, name); // todo: this was allready allocted and freed before, could be only alloced before
 	if (!file_path) {
 		//todo: error etc..
 		return ;
