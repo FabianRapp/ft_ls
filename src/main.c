@@ -137,8 +137,8 @@ void handle_dir(const char *path, t_modes modes, char ***paths, int *path_count)
 		ft_fprintf(2, "ft_ls: cannot open directory '%s': %s\n", path, strerror(errno));
 		return ;
 	}
-	if (modes.recursive) {
-		ft_printf("\n%s:\n", path);
+	if (modes.recursive || *path_count > 1) {
+		ft_printf("%s:\n", path);
 	}
 	struct dirent *sub_files = (struct dirent *)dyn_arr_init(sizeof(struct dirent), 24);
 	int sub_file_count = 0;
@@ -180,10 +180,6 @@ void handle_dir(const char *path, t_modes modes, char ***paths, int *path_count)
 		}
 	}
 	dyn_arr_free((void**)(&sub_files));
-	if (modes.recursive) {
-		ft_printf("\n");
-	}
-
 }
 
 void handle_path(const char *path, t_modes modes, char ***paths, int *path_count) {
@@ -257,23 +253,23 @@ int main(int ac, char **av) {
 		}
 		dyn_arr_add_save((void**)(&paths), (void*)(&cur_dir), path_count++);
 	}
-	for (int i = 0 ; i < path_count; i++) {
+	int i =0;
+	while (i < path_count) {
 		// todo: super slow to sort all the time, better lists with sorted insert
 		if (!modes.reverse) {
 			ft_sort(paths + i, sizeof(char *), path_count - i, cmp_paths);
 		} else {
 			ft_sort(paths + i, sizeof(char *), path_count - i, cmp_paths_reverse);
 		}
-
 		handle_path(paths[i], modes, &paths, &path_count);
+		if (++i < path_count) {
+			ft_printf("\n\n");
+		}
 	}
 	for (int i = 0; i < path_count; i++) {
 		free(paths[i]);
 	}
 
 	dyn_arr_free((void **)(&paths));
-	if (!modes.recursive) {
-		ft_printf("\n");
-	}
 	return 0;
 }
