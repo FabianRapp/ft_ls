@@ -108,15 +108,15 @@ char *get_sub_dir_path(const char *path, const char *sub_name) {
 }
 
 bool cmp_paths(const void *a, const void *b) {
-	char *a_ent = (char *)a;
-	char *b_ent = (char *)b;
-	return ft_strcmp(a_ent, b_ent) > 0;
+	char **a_ent = (char **)a;
+	char **b_ent = (char **)b;
+	return ft_strcmp(*a_ent, *b_ent) > 0;
 }
 
 bool cmp_paths_reverse(const void *a, const void *b) {
-	char *a_ent = (char *)a;
-	char *b_ent = (char *)b;
-	return ft_strcmp(a_ent, b_ent) < 0;
+	char **a_ent = (char **)a;
+	char **b_ent = (char **)b;
+	return ft_strcmp(*a_ent, *b_ent) < 0;
 }
 
 bool cmp_dir_entry(const void *a, const void *b) {
@@ -230,13 +230,18 @@ int main(int ac, char **av) {
 	}
 	int path_count = 0;
 	t_modes modes = {0};
-	const char *cur_dir = ".";
 
 	for (int i = 1; i < ac; i++) {
 		const t_args_type arg_type = args_type(av[i]);
 		set_mode(&modes, arg_type);
 		if (arg_type == PATH) {
-			dyn_arr_add_save((void**)(&paths), (void*)(av + i), path_count++);
+			char *path = ft_strdup(av[i]);
+			if (!path) {
+				//todo: cleanup
+				ft_printf("Malloc error\n");
+				return 1;
+			}
+			dyn_arr_add_save((void**)(&paths), (void*)(&path), path_count++);
 		}
 		//ft_printf("args type %s\n", args_type_to_str(arg_type));
 	}
@@ -244,11 +249,16 @@ int main(int ac, char **av) {
 	//ft_printf("path count: %d\n", path_count);
 
 	if (path_count == 0) {
+		char *cur_dir = ft_strdup(".");
+		if (!cur_dir) {
+			//todo: cleanup
+			ft_printf("Malloc error\n");
+			return 1;
+		}
 		dyn_arr_add_save((void**)(&paths), (void*)(&cur_dir), path_count++);
 	}
-	const int non_recurisve_path_count = path_count;
 	for (int i = 0 ; i < path_count; i++) {
-		// todo: sorting dosn't work and super slow
+		// todo: super slow to sort all the time, better lists with sorted insert
 		if (!modes.reverse) {
 			ft_sort(paths + i, sizeof(char *), path_count - i, cmp_paths);
 		} else {
@@ -257,10 +267,9 @@ int main(int ac, char **av) {
 
 		handle_path(paths[i], modes, &paths, &path_count);
 	}
-	//todo: needs diffrent cleanup since now the array is reordered
-	//for (int i = non_recurisve_path_count; i < path_count; i++) {
-	//	free(paths[i]);
-	//}
+	for (int i = 0; i < path_count; i++) {
+		free(paths[i]);
+	}
 
 	dyn_arr_free((void **)(&paths));
 	if (!modes.recursive) {
