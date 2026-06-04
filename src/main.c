@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <time.h>
 
 /*
  * todo:
@@ -13,7 +14,8 @@
  * [ ] LONG
  * [ ] multiple flags in 1 args
  * [ ] Generell error handling ..
- * [ ] line splitting for multiple input paths, currently only for -R
+ * [ ] TIME sorting
+ * [x] line splitting for multiple input paths, currently only for -R
 */
 
 
@@ -28,6 +30,7 @@ typedef enum {
 	RECURSIVE,
 	ALL,
 	REVERSE,
+	TIME,
 } t_args_type;
 
 typedef struct s_modes {
@@ -35,7 +38,13 @@ typedef struct s_modes {
 	unsigned recursive : 1;
 	unsigned all : 1;
 	unsigned reverse : 1;
+	unsigned time : 1;
 } t_modes;
+
+struct my_dir_ent {
+	struct dirent dirent;
+	struct stat stats;
+};
 
 const char *args_type_to_str(t_args_type type) {
 	switch (type) {
@@ -55,6 +64,7 @@ void set_mode(t_modes *modes, t_args_type type) {
 			case (RECURSIVE): modes->recursive = 1; break ;
 			case (ALL): modes->all = 1; break ;
 			case (REVERSE): modes->reverse = 1; break ;
+			case (TIME): modes->time = 1; break ;
 			case (PATH): break ;
 	}
 }
@@ -69,9 +79,10 @@ t_args_type args_type(const char *arg) {
 		{"-R", "--recursive"},
 		{"-a", "--all"},
 		{"-r", "--reverse"},
+		{"-t", "-t"},
 	};
 	const t_args_type types[] = {
-		LONG, RECURSIVE, ALL, REVERSE,
+		LONG, RECURSIVE, ALL, REVERSE, TIME,
 	};
 	for (int i = 0; i < sizeof flags / sizeof flags[0]; i++) {
 		if (!ft_strcmp(arg, flags[i][0]) || !ft_strcmp(arg, flags[i][1])) {
@@ -79,11 +90,6 @@ t_args_type args_type(const char *arg) {
 		}
 	}
 	return PATH;
-}
-
-//todo: long format
-void print_info(const char *path, t_modes modes) {
-	ft_printf("%s  ", path);
 }
 
 char *get_sub_dir_path(const char *path, const char *sub_name) {
@@ -107,6 +113,46 @@ char *get_sub_dir_path(const char *path, const char *sub_name) {
 	return sub_dir;
 }
 
+//todo: long format
+//todo: needs to take max size of the files in the dir
+void print_info(const char *name, struct stat stats, t_modes modes, const char *path, size_t max_file_size_in_dir) {
+	if (!modes.Long) {
+		ft_printf("%s  ", name);
+		return ;
+	}
+	char *file_path = get_sub_dir_path(path, name);
+	if (!file_path) {
+		//todo: error etc..
+		return ;
+	}
+
+	char *permissons = "---------";
+	char *owner = "OWNER";
+	char *flags = "FLAGS";
+	char *group = "GROUP";
+
+
+
+	//todo: missing link stuff
+	ft_printf("%s %u %s %s %u", permissons, stats.st_nlink, owner, group, stats.st_size);
+	//stats.st_atim
+
+
+	{ // time
+		char *last_modified = ctime(&stats.st_mtim);
+		while (*last_modified != ' ') {
+			last_modified++;
+		}
+		int time_len = ft_strlen(last_modified);
+		time_len -= 9; // -9: removes: newline, year spaces, column, seconds
+		write(1, last_modified, time_len);
+	}
+
+	ft_printf(" %s", name);
+	ft_printf("\n");
+	free(file_path);
+}
+
 bool cmp_paths(const void *a, const void *b) {
 	char **a_ent = (char **)a;
 	char **b_ent = (char **)b;
@@ -120,15 +166,33 @@ bool cmp_paths_reverse(const void *a, const void *b) {
 }
 
 bool cmp_dir_entry(const void *a, const void *b) {
-	struct dirent *a_ent = (struct dirent *)a;
-	struct dirent *b_ent = (struct dirent *)b;
-	return ft_strcmp(a_ent->d_name, b_ent->d_name) > 0;
+	struct my_dir_ent *a_ent = (struct my_dir_ent *)a;
+	struct my_dir_ent *b_ent = (struct my_dir_ent *)b;
+	return ft_strcmp(a_ent->dirent.d_name, b_ent->dirent.d_name) > 0;
 }
 
 bool cmp_dir_entry_reverse(const void *a, const void *b) {
-	struct dirent *a_ent = (struct dirent *)a;
-	struct dirent *b_ent = (struct dirent *)b;
-	return ft_strcmp(a_ent->d_name, b_ent->d_name) < 0;
+	struct my_dir_ent *a_ent = (struct my_dir_ent *)a;
+	struct my_dir_ent *b_ent = (struct my_dir_ent *)b;
+	return ft_strcmp(a_ent->dirent.d_name, b_ent->dirent.d_name) < 0;
+}
+
+bool cmp_dir_entry_time(const void *a, const void *b) {
+	struct my_dir_ent *a_ent = (struct my_dir_ent *)a;
+	struct my_dir_ent *b_ent = (struct my_dir_ent *)b;
+	if (a_ent->stats.st_mtim.tv_sec == b_ent->stats.st_mtim.tv_sec) {
+		return a_ent->stats.st_mtim.tv_nsec < b_ent->stats.st_mtim.tv_nsec;
+	}
+	return a_ent->stats.st_mtim.tv_sec < b_ent->stats.st_mtim.tv_sec;
+}
+
+bool cmp_dir_entry_time_reverse(const void *a, const void *b) {
+	struct my_dir_ent *a_ent = (struct my_dir_ent *)a;
+	struct my_dir_ent *b_ent = (struct my_dir_ent *)b;
+	if (a_ent->stats.st_mtim.tv_sec == b_ent->stats.st_mtim.tv_sec) {
+		return a_ent->stats.st_mtim.tv_nsec > b_ent->stats.st_mtim.tv_nsec;
+	}
+	return a_ent->stats.st_mtim.tv_sec > b_ent->stats.st_mtim.tv_sec;
 }
 
 void handle_dir(const char *path, t_modes modes, char ***paths, int *path_count) {
@@ -140,15 +204,26 @@ void handle_dir(const char *path, t_modes modes, char ***paths, int *path_count)
 	if (modes.recursive || *path_count > 1) {
 		ft_printf("%s:\n", path);
 	}
-	struct dirent *sub_files = (struct dirent *)dyn_arr_init(sizeof(struct dirent), 24);
+	struct my_dir_ent* sub_files = (struct my_dir_ent*)dyn_arr_init(sizeof(struct my_dir_ent), 24);
+
 	int sub_file_count = 0;
+	size_t max_file_size_in_dir = 0; //todo: needs to be filles for -l
 	for (struct dirent *content = readdir(dir); content != NULL; content = readdir(dir)) {
 
 		/*Even though struct dirent is of a certain sice, it is not guaranteed
 		 * that the full struct is allocated. For short file names the allocation
 		 * might be smaller, which leads to segaults in dyn_arr_add_save. */
-		struct dirent local = {0};
-		ft_memcpy(&local, content, content->d_reclen);
+		struct my_dir_ent local;
+		ft_memcpy(&local.dirent, content, content->d_reclen);
+		if (modes.Long || modes.time) {
+			char *sub_file_path = get_sub_dir_path(path, local.dirent.d_name);
+			if (!sub_file_path) {
+				//todo: error etc..
+				return;
+			}
+			assert(lstat(sub_file_path, &local.stats) == 0);
+			free(sub_file_path);
+		}
 
 		if (dyn_arr_add_save((void**)(&sub_files), (void*)(&local), sub_file_count++)) {
 			ft_fprintf(2, "Malloc Error\n");
@@ -157,22 +232,26 @@ void handle_dir(const char *path, t_modes modes, char ***paths, int *path_count)
 		}
 	}
 	closedir(dir);
-
-	if (!modes.reverse) {
-		ft_sort(sub_files, sizeof(struct dirent), sub_file_count, cmp_dir_entry);
-	} else {
-		ft_sort(sub_files, sizeof(struct dirent), sub_file_count, cmp_dir_entry_reverse);
+	if (modes.reverse && !modes.time) {
+		ft_sort(sub_files, sizeof(struct my_dir_ent), sub_file_count, cmp_dir_entry_reverse);
+	} else if (!modes.reverse && modes.time) {
+		ft_sort(sub_files, sizeof(struct my_dir_ent), sub_file_count, cmp_dir_entry_time);
+	} else if (modes.reverse && modes.time) {
+		ft_sort(sub_files, sizeof(struct my_dir_ent), sub_file_count, cmp_dir_entry_time_reverse);
+	} else /*(!modes.reverse && !modes.time) */ {
+		ft_sort(sub_files, sizeof(struct my_dir_ent), sub_file_count, cmp_dir_entry);
 	}
 	for (int i = 0; i < sub_file_count; i++) {
-		struct dirent *content = sub_files + i;
-		if (content->d_name[0] == '.' && !modes.all) {
+		struct my_dir_ent *content = sub_files + i;
+		if (content->dirent.d_name[0] == '.' && !modes.all) {
 			continue ;
 		}
-		print_info(content->d_name, modes);
-		if (modes.recursive && content->d_type == DT_DIR
-			&& ft_strcmp(content->d_name, ".") && ft_strcmp(content->d_name, "..")) {
-			char *rec_dir = get_sub_dir_path(path, content->d_name);
+		print_info(content->dirent.d_name, content->stats, modes, path, max_file_size_in_dir);
+		if (modes.recursive && content->dirent.d_type == DT_DIR
+			&& ft_strcmp(content->dirent.d_name, ".") && ft_strcmp(content->dirent.d_name, "..")) {
+			char *rec_dir = get_sub_dir_path(path, content->dirent.d_name);
 			if (!rec_dir) {
+				//todo: error etc..
 				dyn_arr_free((void**)(&sub_files));
 				return ;
 			}
@@ -256,6 +335,7 @@ int main(int ac, char **av) {
 	int i =0;
 	while (i < path_count) {
 		// todo: super slow to sort all the time, better lists with sorted insert
+		// todo: needs time flag sorting
 		if (!modes.reverse) {
 			ft_sort(paths + i, sizeof(char *), path_count - i, cmp_paths);
 		} else {
